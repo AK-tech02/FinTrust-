@@ -1,0 +1,4 @@
+/* Remove animated background - using solid purple gradient instead */
+.animated-background {
+    display: none;
+}

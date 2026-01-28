@@ -1,0 +1,16 @@
+.parallax-section {
+    position: relative;
+    overflow: hidden;
+    will-change: transform;
+}
+
+.parallax-content {
+    will-change: transform;
+    transform: translate3d(0, 0, 0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .parallax-content {
+        transform: none !important;
+    }
+}

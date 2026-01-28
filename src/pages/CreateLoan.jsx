@@ -1,0 +1,362 @@
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useLoan } from '../context/LoanContext';
+import { validateLoanData } from '../utils/loanValidation';
+import './CreateLoan.css';
+
+const CreateLoan = () => {
+    const navigate = useNavigate();
+    const { createLoan, user } = useLoan();
+
+    const [formData, setFormData] = useState({
+        type: 'lent',
+        amount: '',
+        borrowerName: '',
+        borrowerEmail: '',
+        lenderName: user.name,
+        lenderEmail: user.email,
+        interestRate: 0,
+        dueDate: '',
+        description: '',
+        repaymentSchedule: 'lump-sum'
+    });
+
+    const [errors, setErrors] = useState({});
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [isForeignCurrency, setIsForeignCurrency] = useState(false);
+    const [currency, setCurrency] = useState('USD');
+    const [foreignAmount, setForeignAmount] = useState('');
+
+    const EXCHANGE_RATES = {
+        'USD': { rate: 84.5, symbol: '$' },
+        'EUR': { rate: 92.1, symbol: '€' },
+        'GBP': { rate: 107.5, symbol: '£' },
+        'AUD': { rate: 55.2, symbol: 'A$' },
+        'CAD': { rate: 62.8, symbol: 'C$' },
+        'JPY': { rate: 0.56, symbol: '¥' }
+    };
+
+    const handleForeignAmountChange = (e) => {
+        const val = e.target.value;
+        setForeignAmount(val);
+
+        if (val && !isNaN(val)) {
+            const rate = EXCHANGE_RATES[currency].rate;
+            const baseAmount = parseFloat(val) * rate;
+            const fee = baseAmount * 0.02; // 2% conversion fee
+            const totalInr = baseAmount + fee;
+
+            setFormData(prev => ({
+                ...prev,
+                amount: totalInr.toFixed(2),
+                description: prev.description || `Foreign Currency Loan: ${EXCHANGE_RATES[currency].symbol}${val} (${currency}) @ ${rate} INR/Unit + 2% Conversion Fee`
+            }));
+        } else {
+            setFormData(prev => ({ ...prev, amount: '' }));
+        }
+    };
+
+    const handleCurrencyChange = (e) => {
+        const newCurrency = e.target.value;
+        setCurrency(newCurrency);
+        // Trigger recalculation if amount exists
+        if (foreignAmount) {
+            const rate = EXCHANGE_RATES[newCurrency].rate;
+            const baseAmount = parseFloat(foreignAmount) * rate;
+            const fee = baseAmount * 0.02;
+            const totalInr = baseAmount + fee;
+            setFormData(prev => ({
+                ...prev,
+                amount: totalInr.toFixed(2),
+                description: `Foreign Currency Loan: ${EXCHANGE_RATES[newCurrency].symbol}${foreignAmount} (${newCurrency}) @ ${rate} INR/Unit + 2% Conversion Fee`
+            }));
+        }
+    };
+
+    const handleChange = (e) => {
+        const { name, value } = e.target;
+        setFormData(prev => ({ ...prev, [name]: value }));
+
+        // Clear error when user types
+        if (errors[name]) {
+            setErrors(prev => ({ ...prev, [name]: '' }));
+        }
+    };
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        console.log('Form submitted');
+        console.log('Form data:', formData);
+        console.log('User:', user);
+
+        // Adjust names based on type
+        const loanData = {
+            ...formData,
+            amount: parseFloat(formData.amount),
+            interestRate: parseFloat(formData.interestRate) || 0,
+            // Add metadata for foreign currency if applicable
+            metadata: isForeignCurrency ? {
+                originalCurrency: currency,
+                originalAmount: foreignAmount,
+                exchangeRate: EXCHANGE_RATES[currency].rate,
+                conversionFee: (parseFloat(foreignAmount) * EXCHANGE_RATES[currency].rate * 0.02).toFixed(2)
+            } : null
+        };
+
+        if (formData.type === 'borrowed') {
+            // User is borrowing, so swap the names
+            loanData.lenderName = formData.borrowerName;
+            loanData.lenderEmail = formData.borrowerEmail;
+            loanData.borrowerName = user?.user_metadata?.name || user?.email?.split('@')[0] || 'User';
+            loanData.borrowerEmail = user?.email || '';
+        } else if (formData.type === 'lent') {
+            // User is lending, so user becomes the lender
+            loanData.lenderName = user?.user_metadata?.name || user?.email?.split('@')[0] || 'User';
+            loanData.lenderEmail = user?.email || '';
+            // borrowerName and borrowerEmail are already in formData
+        }
+
+        console.log('Loan data before validation:', loanData);
+
+        // Validate
+        const validation = validateLoanData(loanData);
+
+        if (!validation.isValid) {
+            console.log('Validation failed:', validation.errors);
+            setErrors(validation.errors);
+            return;
+        }
+
+        console.log('Validation passed, creating loan...');
+        setIsSubmitting(true);
+        const result = await createLoan(loanData);
+        console.log('Create loan result:', result);
+
+        if (result.success) {
+            navigate('/loans');
+        } else {
+            alert('Failed to create loan: ' + result.error);
+            setIsSubmitting(false);
+        }
+    };
+
+    return (
+        <div className="create-loan">
+            <div className="page-header">
+                <h1>➕ Create New Loan</h1>
+                <p>Add a new loan to track between friends or family</p>
+            </div>
+
+            <div className="loan-form-card">
+                <form onSubmit={handleSubmit}>
+                    {/* Type Selection */}
+                    <div className="form-section">
+                        <h3>Loan Type</h3>
+                        <div className="radio-group">
+                            <label className="radio-card">
+                                <input
+                                    type="radio"
+                                    name="type"
+                                    value="lent"
+                                    checked={formData.type === 'lent'}
+                                    onChange={handleChange}
+                                />
+                                <div className="radio-content">
+                                    <span className="radio-icon">↗️</span>
+                                    <div>
+                                        <div className="radio-title">I Lent Money</div>
+                                        <div className="radio-desc">You gave money to someone</div>
+                                    </div>
+                                </div>
+                            </label>
+
+                            <label className="radio-card">
+                                <input
+                                    type="radio"
+                                    name="type"
+                                    value="borrowed"
+                                    checked={formData.type === 'borrowed'}
+                                    onChange={handleChange}
+                                />
+                                <div className="radio-content">
+                                    <span className="radio-icon">↙️</span>
+                                    <div>
+                                        <div className="radio-title">I Borrowed Money</div>
+                                        <div className="radio-desc">You received money from someone</div>
+                                    </div>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+
+                    {/* Contact Information */}
+                    <div className="form-section">
+                        <h3>{formData.type === 'lent' ? 'Borrower' : 'Lender'} Information</h3>
+                        <div className="form-row">
+                            <div className="form-group">
+                                <label>Name *</label>
+                                <input
+                                    type="text"
+                                    name="borrowerName"
+                                    value={formData.borrowerName}
+                                    onChange={handleChange}
+                                    placeholder="Enter name"
+                                    className={errors.borrowerName ? 'error' : ''}
+                                />
+                                {errors.borrowerName && <span className="error-text">{errors.borrowerName}</span>}
+                            </div>
+
+                            <div className="form-group">
+                                <label>Email</label>
+                                <input
+                                    type="email"
+                                    name="borrowerEmail"
+                                    value={formData.borrowerEmail}
+                                    onChange={handleChange}
+                                    placeholder="email@example.com"
+                                    className={errors.borrowerEmail ? 'error' : ''}
+                                />
+                                {errors.borrowerEmail && <span className="error-text">{errors.borrowerEmail}</span>}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Loan Details */}
+                    <div className="form-section">
+                        <h3>Loan Details</h3>
+
+                        {/* Currency Toggle */}
+                        <div className="currency-toggle-container">
+                            <label className="checkbox-container">
+                                <input
+                                    type="checkbox"
+                                    checked={isForeignCurrency}
+                                    onChange={(e) => {
+                                        setIsForeignCurrency(e.target.checked);
+                                        if (!e.target.checked) {
+                                            setFormData(prev => ({ ...prev, amount: '' }));
+                                            setForeignAmount('');
+                                        }
+                                    }}
+                                />
+                                <span className="checkbox-label">💱 International Transaction (Foreign Currency)</span>
+                            </label>
+                        </div>
+
+                        {isForeignCurrency && (
+                            <div className="foreign-currency-box">
+                                <div className="form-row">
+                                    <div className="form-group">
+                                        <label>Select Currency</label>
+                                        <select value={currency} onChange={handleCurrencyChange} className="currency-select">
+                                            {Object.keys(EXCHANGE_RATES).map(curr => (
+                                                <option key={curr} value={curr}>
+                                                    {EXCHANGE_RATES[curr].symbol} {curr} - {EXCHANGE_RATES[curr].rate} INR
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div className="form-group">
+                                        <label>Amount in {currency}</label>
+                                        <input
+                                            type="number"
+                                            value={foreignAmount}
+                                            onChange={handleForeignAmountChange}
+                                            placeholder="e.g. 100"
+                                            min="0"
+                                        />
+                                    </div>
+                                </div>
+                                <div className="conversion-breakdown">
+                                    <p>Exchange Rate: 1 {currency} = ₹{EXCHANGE_RATES[currency].rate}</p>
+                                    <p>Conversion Fee (2%): <span className="fee-text">+ ₹{foreignAmount ? (parseFloat(foreignAmount) * EXCHANGE_RATES[currency].rate * 0.02).toFixed(2) : '0.00'}</span></p>
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="form-row">
+                            <div className="form-group">
+                                <label>Total Amount (INR) * {isForeignCurrency && <span className="auto-calc-badge">Auto-Calculated</span>}</label>
+                                <input
+                                    type="number"
+                                    name="amount"
+                                    value={formData.amount}
+                                    onChange={handleChange}
+                                    placeholder="0.00"
+                                    min="0"
+                                    step="0.01"
+                                    className={errors.amount ? 'error' : ''}
+                                    readOnly={isForeignCurrency} // Lock if auto-calculated
+                                />
+                                {errors.amount && <span className="error-text">{errors.amount}</span>}
+                            </div>
+
+                            <div className="form-group">
+                                <label>Interest Rate (%)</label>
+                                <input
+                                    type="number"
+                                    name="interestRate"
+                                    value={formData.interestRate}
+                                    onChange={handleChange}
+                                    placeholder="0"
+                                    min="0"
+                                    max="100"
+                                    step="0.1"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="form-row">
+                            <div className="form-group">
+                                <label>Due Date *</label>
+                                <input
+                                    type="date"
+                                    name="dueDate"
+                                    value={formData.dueDate}
+                                    onChange={handleChange}
+                                    className={errors.dueDate ? 'error' : ''}
+                                />
+                                {errors.dueDate && <span className="error-text">{errors.dueDate}</span>}
+                            </div>
+
+                            <div className="form-group">
+                                <label>Repayment Schedule *</label>
+                                <select
+                                    name="repaymentSchedule"
+                                    value={formData.repaymentSchedule}
+                                    onChange={handleChange}
+                                >
+                                    <option value="lump-sum">Lump Sum</option>
+                                    <option value="monthly">Monthly</option>
+                                    <option value="weekly">Weekly</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div className="form-group">
+                            <label>Description / Notes</label>
+                            <textarea
+                                name="description"
+                                value={formData.description}
+                                onChange={handleChange}
+                                placeholder="Add any notes about this loan..."
+                                rows="4"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="form-actions">
+                        <button type="button" className="btn-secondary" onClick={() => navigate('/loans')}>
+                            Cancel
+                        </button>
+                        <button type="submit" className="btn-primary" disabled={isSubmitting}>
+                            {isSubmitting ? 'Creating...' : '✓ Create Loan'}
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+};
+
+export default CreateLoan;

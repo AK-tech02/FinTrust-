@@ -1,0 +1,29 @@
+.gradient-text {
+    background: linear-gradient(90deg,
+            var(--color-primary),
+            var(--color-secondary),
+            var(--color-accent),
+            var(--color-primary));
+    background-size: 300% 100%;
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: gradientFlow 6s ease-in-out infinite;
+    font-weight: 700;
+}
+
+@keyframes gradientFlow {
+
+    0%,
+    100% {
+        background-position: 0% 50%;
+    }
+
+    50% {
+        background-position: 100% 50%;
+    }
+}
+
+[data-theme="night"] .gradient-text {
+    filter: drop-shadow(0 0 8px rgba(0, 217, 255, 0.3));
+}
