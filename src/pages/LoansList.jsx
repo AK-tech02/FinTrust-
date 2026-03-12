@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useLoan } from '../context/LoanContext';
 import { formatCurrency, formatDate, getDaysUntilDue } from '../utils/loanValidation';
+import { exportLoansToCSV } from '../utils/exportUtils';
 import './LoansList.css';
 
 const LoansList = () => {
@@ -23,9 +24,14 @@ const LoansList = () => {
                     <h1>💰 My Loans</h1>
                     <p>Manage all your lending and borrowing activities</p>
                 </div>
-                <Link to="/create-loan" className="btn-primary">
-                    ➕ Create Loan
-                </Link>
+                <div style={{ display: 'flex', gap: '12px' }}>
+                    <button onClick={() => exportLoansToCSV(loans)} className="btn-secondary" title="Export to CSV">
+                        📥 Export Data
+                    </button>
+                    <Link to="/create-loan" className="btn-primary">
+                        ➕ Create Loan
+                    </Link>
+                </div>
             </div>
 
             {/* Filters */}

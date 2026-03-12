@@ -1,23 +1,36 @@
 import { useEffect } from 'react';
-import { supabase } from './supabaseClient';
+import { app } from './firebase';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AnimatePresence } from 'framer-motion';
+import { Toaster } from 'react-hot-toast';
 import { LoanProvider, useLoan } from './context/LoanContext';
 import Layout from './components/Layout';
+import LandingPage from './pages/LandingPage';
 import LoginSignup from './components/LoginSignup';
 import Dashboard from './pages/Dashboard';
 import CreateLoan from './pages/CreateLoan';
 import LoansList from './pages/LoansList';
 import LoanDetails from './pages/LoanDetails';
 import UpdateLoan from './pages/UpdateLoan';
+import Profile from './pages/Profile';
+import SocialHub from './pages/SocialHub';
+import Leaderboard from './pages/Leaderboard';
 import Chatbot from './components/Chatbot';
 import CustomCursor from './components/CustomCursor';
 import PageTransition from './components/PageTransition';
 
 // Protected Route Component
 const ProtectedRoute = ({ children }) => {
-  const { isAuthenticated } = useLoan();
-  return isAuthenticated ? children : <Navigate to="/" />;
+  const { isAuthenticated, loading } = useLoan();
+  if (loading) return <div>Loading...</div>;
+  return isAuthenticated ? children : <Navigate to="/auth" />;
+};
+
+// Public Route Component (redirects to dashboard if logged in)
+const PublicRoute = ({ children }) => {
+  const { isAuthenticated, loading } = useLoan();
+  if (loading) return <div>Loading...</div>;
+  return isAuthenticated ? <Navigate to="/dashboard" /> : children;
 };
 
 // Animated Routes Component
@@ -27,44 +40,38 @@ const AnimatedRoutes = () => {
   return (
     <AnimatePresence mode="wait">
       <Routes location={location} key={location.pathname}>
-        <Route path="/dashboard" element={<PageTransition><Dashboard /></PageTransition>} />
-        <Route path="/loans" element={<PageTransition><LoansList /></PageTransition>} />
-        <Route path="/create-loan" element={<PageTransition><CreateLoan /></PageTransition>} />
-        <Route path="/loan/:id" element={<PageTransition><LoanDetails /></PageTransition>} />
-        <Route path="/loan/:id/edit" element={<PageTransition><UpdateLoan /></PageTransition>} />
-        <Route path="*" element={<Navigate to="/dashboard" />} />
+        {/* Public Routes */}
+        <Route path="/" element={<PublicRoute><LandingPage /></PublicRoute>} />
+        <Route path="/auth" element={<PublicRoute><LoginSignup /></PublicRoute>} />
+
+        {/* Protected Routes directly rendering layout wrappers */}
+        <Route path="/dashboard" element={<ProtectedRoute><Layout><PageTransition><Dashboard /></PageTransition></Layout></ProtectedRoute>} />
+        <Route path="/loans" element={<ProtectedRoute><Layout><PageTransition><LoansList /></PageTransition></Layout></ProtectedRoute>} />
+        <Route path="/create-loan" element={<ProtectedRoute><Layout><PageTransition><CreateLoan /></PageTransition></Layout></ProtectedRoute>} />
+        <Route path="/loan/:id" element={<ProtectedRoute><Layout><PageTransition><LoanDetails /></PageTransition></Layout></ProtectedRoute>} />
+        <Route path="/loan/:id/edit" element={<ProtectedRoute><Layout><PageTransition><UpdateLoan /></PageTransition></Layout></ProtectedRoute>} />
+        <Route path="/social" element={<ProtectedRoute><Layout><PageTransition><SocialHub /></PageTransition></Layout></ProtectedRoute>} />
+        <Route path="/leaderboard" element={<ProtectedRoute><Layout><PageTransition><Leaderboard /></PageTransition></Layout></ProtectedRoute>} />
+        <Route path="/profile" element={<ProtectedRoute><Layout><PageTransition><Profile /></PageTransition></Layout></ProtectedRoute>} />
+
+        <Route path="*" element={<Navigate to="/" />} />
       </Routes>
     </AnimatePresence>
   );
 };
 
-// Main App Content
-const AppContent = () => {
-  const { isAuthenticated } = useLoan();
-
-  if (!isAuthenticated) {
-    return <LoginSignup />;
-  }
-
-  return (
-    <>
-      <CustomCursor />
-      <Layout>
-        <Chatbot />
-        <AnimatedRoutes />
-      </Layout>
-    </>
-  );
-};
-
 function App() {
   useEffect(() => {
-    console.log('Supabase client initialized:', supabase);
+    console.log('Firebase client initialized:', app);
   }, []);
+
   return (
     <Router>
       <LoanProvider>
-        <AppContent />
+        <Toaster position="top-right" />
+        <CustomCursor />
+        <Chatbot />
+        <AnimatedRoutes />
       </LoanProvider>
     </Router>
   );

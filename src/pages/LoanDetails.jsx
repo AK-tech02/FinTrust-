@@ -8,7 +8,7 @@ import './LoanDetails.css';
 const LoanDetails = () => {
     const { id } = useParams();
     const navigate = useNavigate();
-    const { getLoanDetails, deleteLoan, updateLoan, addRepayment, getRepaymentsByLoan, calculateOutstandingAmount } = useLoan();
+    const { user, getLoanDetails, deleteLoan, updateLoan, addRepayment, getRepaymentsByLoan, calculateOutstandingAmount } = useLoan();
     const [loan, setLoan] = useState(null);
     const [showDeleteModal, setShowDeleteModal] = useState(false);
     const [showPaymentForm, setShowPaymentForm] = useState(false);
@@ -49,9 +49,21 @@ const LoanDetails = () => {
         setLoan({ ...loan, status: 'completed', amountPaid: loan.amount });
     };
 
-    if (!loan) return <div>Loading...</div>;
+    const handleApprove = async () => {
+        await updateLoan(id, { status: 'active' });
+        setLoan({ ...loan, status: 'active' });
+    };
+
+    const handleReject = async () => {
+        await updateLoan(id, { status: 'rejected' });
+        setLoan({ ...loan, status: 'rejected' });
+    };
+
+    if (!loan || !user) return <div>Loading...</div>;
 
     const personName = loan.type === 'lent' ? loan.borrowerName : loan.lenderName;
+    const isReceiver = loan.created_by !== user.id; // Did someone else create this?
+    const isBorrower = loan.borrowerEmail === user.email || (loan.type === 'borrowed' && loan.created_by === user.id) || (loan.type === 'lent' && loan.created_by !== user.id);
     const daysRemaining = getDaysUntilDue(loan.dueDate);
     const progress = (loan.amountPaid / loan.amount) * 100;
 
@@ -62,6 +74,20 @@ const LoanDetails = () => {
                     ← Back to Loans
                 </button>
                 <div className="header-actions">
+                    {loan.status === 'pending_approval' && isReceiver && (
+                        <>
+                            <button onClick={handleApprove} className="btn-primary" style={{ marginRight: '0.5rem', background: '#10B981', borderColor: '#10B981' }}>
+                                ✅ Approve Loan
+                            </button>
+                            <button onClick={handleReject} className="btn-secondary" style={{ marginRight: '0.5rem', color: '#EF4444', borderColor: '#EF4444' }}>
+                                ❌ Reject
+                            </button>
+                        </>
+                    )}
+                    {loan.status === 'pending_approval' && !isReceiver && (
+                        <span style={{ marginRight: '1rem', color: '#F59E0B', fontWeight: 'bold' }}>⏳ Waiting for {personName} to approve</span>
+                    )}
+
                     {(loan.status === 'active' || loan.status === 'overdue') && (
                         <button
                             onClick={() => {
@@ -178,10 +204,17 @@ const LoanDetails = () => {
                         </div>
                     )}
 
-                    {loan.status === 'active' && (
-                        <button onClick={markAsCompleted} className="btn-complete">
-                            ✓ Mark as Completed
-                        </button>
+                    {loan.status === 'active' && isBorrower && (
+                        <div style={{ marginTop: '24px', padding: '16px', background: '#F3F4F6', borderRadius: '8px', border: '1px solid #E5E7EB' }}>
+                            <h4 style={{ marginBottom: '8px', color: '#374151' }}>Finalize Loan</h4>
+                            <p style={{ marginBottom: '12px', fontSize: '14px', color: '#4B5563' }}>To finalize this loan, please add a formal payment record for the remaining balance.</p>
+                            <button onClick={() => {
+                                setShowPaymentForm(true);
+                                window.scrollTo({ top: 0, behavior: 'smooth' });
+                            }} className="btn-primary" style={{ width: '100%' }}>
+                                ✓ Mark Repayment as Done
+                            </button>
+                        </div>
                     )}
                 </div>
 

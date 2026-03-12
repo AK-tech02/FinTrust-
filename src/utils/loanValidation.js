@@ -53,7 +53,7 @@ export const validateLoanData = (loanData) => {
     }
 
     // Validate repayment schedule
-    if (!loanData.repaymentSchedule || !['monthly', 'weekly', 'lump-sum'].includes(loanData.repaymentSchedule)) {
+    if (!loanData.repaymentSchedule || !['monthly', 'weekly', 'lump_sum', 'emi'].includes(loanData.repaymentSchedule)) {
         errors.repaymentSchedule = 'Please select a valid repayment schedule';
     }
 

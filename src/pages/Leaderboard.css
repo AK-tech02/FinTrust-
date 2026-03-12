@@ -1,0 +1,132 @@
+.leaderboard-page {
+    max-width: 900px;
+    margin: 0 auto;
+}
+
+.leaderboard-header {
+    text-align: center;
+    margin-bottom: 40px;
+}
+
+.leaderboard-header h1 {
+    font-size: 32px;
+    background: linear-gradient(135deg, #F59E0B, #D97706);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 8px;
+}
+
+.leaderboard-header p {
+    color: #6B7280;
+}
+
+.leaderboard-table-wrapper {
+    background: white;
+    border-radius: 16px;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+    overflow: hidden;
+    border: 1px solid #F3F4F6;
+}
+
+.leaderboard-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.leaderboard-table th {
+    background: #F9FAFB;
+    padding: 16px;
+    text-align: left;
+    font-size: 14px;
+    font-weight: 600;
+    color: #4B5563;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-bottom: 1px solid #E5E7EB;
+}
+
+.leaderboard-table td {
+    padding: 16px;
+    border-bottom: 1px solid #F3F4F6;
+    vertical-align: middle;
+}
+
+.leaderboard-table tr:last-child td {
+    border-bottom: none;
+}
+
+.rank-cell {
+    font-size: 24px;
+    font-weight: bold;
+    color: #6B7280;
+    width: 80px;
+    text-align: center;
+}
+
+.user-cell {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.user-avatar-small {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: #E5E7EB;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    color: #4B5563;
+}
+
+.user-name-cell {
+    font-weight: 600;
+    color: #1F2937;
+}
+
+.top-1 {
+    background: linear-gradient(to right, #FFFBEB, white);
+}
+
+.top-1 .user-avatar-small {
+    background: #FEF3C7;
+    color: #D97706;
+}
+
+.top-2 {
+    background: linear-gradient(to right, #F3F4F6, white);
+}
+
+.top-3 {
+    background: linear-gradient(to right, #FFF7ED, white);
+}
+
+.speed-cell {
+    width: 200px;
+}
+
+.speed-text {
+    font-size: 14px;
+    font-weight: 600;
+    color: #059669;
+}
+
+.xp-badge {
+    background: #DBEAFE;
+    color: #1D4ED8;
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-weight: 700;
+    font-size: 14px;
+    display: inline-block;
+}
+
+.loading-state {
+    text-align: center;
+    padding: 40px;
+    color: #6B7280;
+    font-size: 16px;
+}

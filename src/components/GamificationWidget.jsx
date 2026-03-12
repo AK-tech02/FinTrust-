@@ -23,10 +23,7 @@ const GamificationWidget = () => {
                 </div>
             </div>
             <div className="widget-stats">
-                <div className="widget-stat">
-                    <span className="stat-icon">🔥</span>
-                    <span className="stat-value">{gamification.streak}</span>
-                </div>
+
                 <div className="widget-stat">
                     <span className="stat-icon">⭐</span>
                     <span className="stat-value">{gamification.trustScore}</span>

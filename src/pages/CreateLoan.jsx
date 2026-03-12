@@ -2,11 +2,12 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLoan } from '../context/LoanContext';
 import { validateLoanData } from '../utils/loanValidation';
+import toast from 'react-hot-toast';
 import './CreateLoan.css';
 
 const CreateLoan = () => {
     const navigate = useNavigate();
-    const { createLoan, user } = useLoan();
+    const { createLoan, user, gamification } = useLoan();
 
     const [formData, setFormData] = useState({
         type: 'lent',
@@ -18,7 +19,7 @@ const CreateLoan = () => {
         interestRate: 0,
         dueDate: '',
         description: '',
-        repaymentSchedule: 'lump-sum'
+        repaymentSchedule: 'lump_sum'
     });
 
     const [errors, setErrors] = useState({});
@@ -107,11 +108,11 @@ const CreateLoan = () => {
             // User is borrowing, so swap the names
             loanData.lenderName = formData.borrowerName;
             loanData.lenderEmail = formData.borrowerEmail;
-            loanData.borrowerName = user?.user_metadata?.name || user?.email?.split('@')[0] || 'User';
+            loanData.borrowerName = user?.name || user?.email?.split('@')[0] || 'User';
             loanData.borrowerEmail = user?.email || '';
         } else if (formData.type === 'lent') {
             // User is lending, so user becomes the lender
-            loanData.lenderName = user?.user_metadata?.name || user?.email?.split('@')[0] || 'User';
+            loanData.lenderName = user?.name || user?.email?.split('@')[0] || 'User';
             loanData.lenderEmail = user?.email || '';
             // borrowerName and borrowerEmail are already in formData
         }
@@ -127,15 +128,23 @@ const CreateLoan = () => {
             return;
         }
 
+        // New User Borrowing Limit
+        if (formData.type === 'borrowed' && gamification?.stats?.completedLoans === 0 && parseFloat(formData.amount) > 500) {
+            setErrors(prev => ({ ...prev, amount: 'New users (0 completed loans) can borrow a maximum of ₹500.' }));
+            return;
+        }
+
         console.log('Validation passed, creating loan...');
         setIsSubmitting(true);
         const result = await createLoan(loanData);
         console.log('Create loan result:', result);
 
         if (result.success) {
+            toast.success('Loan created successfully!');
             navigate('/loans');
         } else {
-            alert('Failed to create loan: ' + result.error);
+            console.error('Failed to create loan:', result.error);
+            toast.error('Failed to create loan: ' + result.error);
             setIsSubmitting(false);
         }
     };
@@ -326,7 +335,8 @@ const CreateLoan = () => {
                                     value={formData.repaymentSchedule}
                                     onChange={handleChange}
                                 >
-                                    <option value="lump-sum">Lump Sum</option>
+                                    <option value="lump_sum">Lump Sum (One-time payment)</option>
+                                    <option value="emi">EMI (Equated Monthly Installment)</option>
                                     <option value="monthly">Monthly</option>
                                     <option value="weekly">Weekly</option>
                                 </select>

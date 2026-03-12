@@ -1,4 +1,5 @@
-import { NavLink } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
+import { useLoan } from '../context/LoanContext';
 import './Sidebar.css';
 
 const Sidebar = () => {
@@ -6,7 +7,22 @@ const Sidebar = () => {
         { path: '/dashboard', icon: '📊', label: 'Dashboard' },
         { path: '/loans', icon: '💰', label: 'My Loans' },
         { path: '/create-loan', icon: '➕', label: 'Create Loan' },
+        { path: '/social', icon: '👥', label: 'Social Hub' },
+        { path: '/leaderboard', icon: '🏆', label: 'Leaderboard' },
+        { path: '/profile', icon: '👤', label: 'Profile' },
     ];
+
+    const { logout } = useLoan();
+    const navigate = useNavigate();
+
+    const handleLogout = async () => {
+        try {
+            await logout();
+            navigate('/auth');
+        } catch (error) {
+            console.error('Failed to log out', error);
+        }
+    };
 
     return (
         <aside className="sidebar">
@@ -25,6 +41,13 @@ const Sidebar = () => {
                     </li>
                 ))}
             </ul>
+
+            <div className="sidebar-footer">
+                <button onClick={handleLogout} className="sidebar-logout">
+                    <span className="sidebar-icon">🚪</span>
+                    <span>Sign Out</span>
+                </button>
+            </div>
         </aside>
     );
 };

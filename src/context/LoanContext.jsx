@@ -1,6 +1,29 @@
 import { createContext, useContext, useState, useEffect } from 'react';
-import { supabase } from '../supabaseClient';
+import { auth, db } from '../firebase';
+import {
+    createUserWithEmailAndPassword,
+    signInWithEmailAndPassword,
+    signOut,
+    onAuthStateChanged,
+    updateProfile
+} from 'firebase/auth';
+import {
+    collection,
+    addDoc,
+    getDocs,
+    doc,
+    updateDoc,
+    deleteDoc,
+    query,
+    where,
+    orderBy,
+    limit,
+    serverTimestamp,
+    getDoc,
+    setDoc
+} from 'firebase/firestore';
 import { mockLoans } from '../utils/mockData';
+import toast from 'react-hot-toast';
 
 const LoanContext = createContext();
 
@@ -22,7 +45,7 @@ export const LoanProvider = ({ children }) => {
         level: 1,
         badges: [],
         streak: 0,
-        trustScore: 50,
+        trustScore: 500,
         stats: {
             totalLoans: 0,
             completedLoans: 0,
@@ -35,27 +58,32 @@ export const LoanProvider = ({ children }) => {
 
     // Auth state listener
     useEffect(() => {
-        // Check current session
-        supabase.auth.getSession().then(({ data: { session } }) => {
-            console.log('Initial session:', session);
-            setUser(session?.user ?? null);
-            setIsAuthenticated(!!session);
+        // Firebase Auth listener
+        const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+            console.log('Auth state changed:', currentUser);
+            // We map Firebase user to our expected format
+            if (currentUser) {
+                setUser({
+                    id: currentUser.uid,
+                    email: currentUser.email,
+                    name: currentUser.displayName || currentUser.email.split('@')[0],
+                    ...currentUser
+                });
+                setIsAuthenticated(true);
+            } else {
+                setUser(null);
+                setIsAuthenticated(false);
+            }
         });
 
-        // Listen for auth changes
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-            console.log('Auth state changed:', _event, session);
-            setUser(session?.user ?? null);
-            setIsAuthenticated(!!session);
-        });
-
-        return () => subscription.unsubscribe();
+        // Cleanup subscription on unmount
+        return () => unsubscribe();
     }, []);
 
     // Load mock data on mount
     // Helper function to map database fields to app format
-    const mapLoanFromDB = (dbLoan) => ({
-        id: dbLoan.id,
+    const mapLoanFromDB = (id, dbLoan) => ({
+        id: id,
         type: dbLoan.type,
         amount: parseFloat(dbLoan.amount),
         amountPaid: parseFloat(dbLoan.amount_paid) || 0,
@@ -70,7 +98,7 @@ export const LoanProvider = ({ children }) => {
         description: dbLoan.description,
         repaymentSchedule: dbLoan.repayment_schedule,
         metadata: dbLoan.metadata,
-        createdAt: dbLoan.created_at,
+        createdAt: dbLoan.created_at?.toDate ? dbLoan.created_at.toDate() : dbLoan.created_at,
         payments: dbLoan.payments || []
     });
 
@@ -79,19 +107,54 @@ export const LoanProvider = ({ children }) => {
         if (!user) return;
         setLoading(true);
         try {
-            const { data, error } = await supabase
-                .from('loans')
-                .select(`
-                    *,
-                    payments (*)
-                `)
-                .order('created_at', { ascending: false });
+            // Execute multiple queries to avoid requiring a complex composite index in Firestore
+            const qOwner = query(collection(db, 'loans'), where('user_id', '==', user.id));
+            const qBorrower = query(collection(db, 'loans'), where('borrower_email', '==', user.email));
+            const qLender = query(collection(db, 'loans'), where('lender_email', '==', user.email));
 
-            if (error) throw error;
-            const mappedLoans = (data || []).map(mapLoanFromDB);
-            setLoans(mappedLoans);
+            const [snapOwner, snapBorrower, snapLender] = await Promise.all([
+                getDocs(qOwner),
+                getDocs(qBorrower),
+                getDocs(qLender)
+            ]);
+
+            // De-duplicate results
+            const uniqueDocs = new Map();
+            snapOwner.forEach(doc => uniqueDocs.set(doc.id, doc));
+            snapBorrower.forEach(doc => uniqueDocs.set(doc.id, doc));
+            snapLender.forEach(doc => uniqueDocs.set(doc.id, doc));
+
+            const allDocs = Array.from(uniqueDocs.values());
+
+            // Manually sort by created_at descending
+            allDocs.sort((a, b) => {
+                const dateA = a.data().created_at?.toDate ? a.data().created_at.toDate() : new Date(a.data().created_at || 0);
+                const dateB = b.data().created_at?.toDate ? b.data().created_at.toDate() : new Date(b.data().created_at || 0);
+                return dateB - dateA;
+            });
+
+            const loadedLoans = [];
+
+            for (const docSnapshot of allDocs) {
+                const loanData = docSnapshot.data();
+
+                // Fetch associated payments for this loan
+                const paymentsQuery = query(
+                    collection(db, 'payments'),
+                    where('loan_id', '==', docSnapshot.id)
+                );
+                const paymentsSnapshot = await getDocs(paymentsQuery);
+                const payments = paymentsSnapshot.docs.map(p => ({ id: p.id, ...p.data() }));
+
+                loanData.payments = payments;
+                loadedLoans.push(mapLoanFromDB(docSnapshot.id, loanData));
+            }
+
+            setLoans(loadedLoans);
+            checkDueDates(loadedLoans); // Trigger notifications
         } catch (error) {
             console.error('Error fetching loans:', error.message);
+            // If the index requires building in Firestore, it will log the URL to build the index
         } finally {
             setLoading(false);
         }
@@ -101,16 +164,73 @@ export const LoanProvider = ({ children }) => {
     const fetchActivities = async () => {
         if (!user) return;
         try {
-            const { data, error } = await supabase
-                .from('activities')
-                .select('*')
-                .order('created_at', { ascending: false })
-                .limit(100);
+            const q = query(
+                collection(db, 'activities'),
+                where('user_id', '==', user.id),
+                orderBy('created_at', 'desc'),
+                limit(100)
+            );
 
-            if (error) throw error;
-            setActivities(data || []);
+            const querySnapshot = await getDocs(q);
+            const loadedActivities = querySnapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data(),
+                created_at: doc.data().created_at?.toDate ? doc.data().created_at.toDate() : doc.data().created_at
+            }));
+
+            setActivities(loadedActivities);
         } catch (error) {
             console.error('Error fetching activities:', error.message);
+        }
+    };
+
+    // CHECK DUE DATES FOR NOTIFICATIONS
+    const checkDueDates = (loadedLoans) => {
+        if (!user) return;
+
+        // Only trigger once per session to avoid annoying the user
+        if (sessionStorage.getItem('fintrust_notified_due')) return;
+
+        let notified = false;
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const tomorrow = new Date(today);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+
+        loadedLoans.forEach(loan => {
+            // Only remind if the user is the borrower and the loan is active
+            const isBorrower = loan.borrowerEmail === user.email || (loan.type === 'borrowed' && loan.created_by === user.id) || (loan.type === 'lent' && loan.created_by !== user.id);
+
+            if (loan.status === 'active' && isBorrower) {
+                const dueDate = new Date(loan.dueDate);
+                dueDate.setHours(0, 0, 0, 0);
+
+                const timeDiff = dueDate.getTime() - today.getTime();
+                const daysDiff = Math.ceil(timeDiff / (1000 * 3600 * 24));
+
+                if (daysDiff === 0) {
+                    setTimeout(() => {
+                        toast(`🚨 URGENT: Your loan from ${loan.lenderName || 'lender'} is due TODAY!`, {
+                            duration: 8000,
+                            style: { background: '#EF4444', color: '#fff', fontWeight: 'bold' }
+                        });
+                    }, 1000); // Small delay to let UI load
+                    notified = true;
+                } else if (daysDiff === 1) {
+                    setTimeout(() => {
+                        toast(`📅 Friendly reminder: Your loan from ${loan.lenderName || 'lender'} is due tomorrow!`, {
+                            duration: 6000,
+                            style: { background: '#F59E0B', color: '#fff' }
+                        });
+                    }, 1500);
+                    notified = true;
+                }
+            }
+        });
+
+        if (notified) {
+            sessionStorage.setItem('fintrust_notified_due', 'true');
         }
     };
 
@@ -142,36 +262,37 @@ export const LoanProvider = ({ children }) => {
                 amount_paid: 0,
                 currency: loanData.currency || 'INR',
                 interest_rate: loanData.interestRate || 0,
-                borrower_name: loanData.borrowerName,
-                borrower_email: loanData.borrowerEmail,
-                lender_name: loanData.lenderName,
-                lender_email: loanData.lenderEmail,
-                status: 'active',
+                borrower_name: loanData.borrowerName || '',
+                borrower_email: loanData.borrowerEmail || '',
+                lender_name: loanData.lenderName || '',
+                lender_email: loanData.lenderEmail || '',
+                status: 'pending_approval', // Starts as pending until the other party approves
+                created_by: user.id, // Track who created it so the OTHER person has to approve
                 due_date: loanData.dueDate,
-                description: loanData.description,
-                repayment_schedule: loanData.repaymentSchedule,
-                metadata: loanData.metadata || {}
+                description: loanData.description || '',
+                repayment_schedule: loanData.repaymentSchedule || 'monthly',
+                metadata: loanData.metadata || {},
+                created_at: serverTimestamp(),
+                updated_at: serverTimestamp()
             };
 
             console.log('Inserting loan to DB:', newLoanProto);
 
-            const { data, error } = await supabase
-                .from('loans')
-                .insert([newLoanProto])
-                .select()
-                .single();
+            const docRef = await addDoc(collection(db, 'loans'), newLoanProto);
 
-            if (error) throw error;
+            console.log('Loan created successfully with ID:', docRef.id);
+            // After creation, standard timestamps from serverTimestamp might be delayed/pending
+            // So we mock the creation time to immediate current date for UI render
+            newLoanProto.created_at = new Date();
 
-            console.log('Loan created successfully:', data);
-            const mappedLoan = mapLoanFromDB(data);
+            const mappedLoan = mapLoanFromDB(docRef.id, newLoanProto);
             setLoans(prevLoans => [mappedLoan, ...prevLoans]);
 
             // Log activity
             logActivity(
                 'LOAN_CREATED',
                 `Created ${loanData.type} loan ${loanData.type === 'lent' ? 'to' : 'from'} ${loanData.type === 'lent' ? loanData.borrowerName : loanData.lenderName} for ₹${loanData.amount}`,
-                mappedLoan.id,
+                docRef.id,
                 { amount: loanData.amount, type: loanData.type }
             );
 
@@ -181,6 +302,7 @@ export const LoanProvider = ({ children }) => {
             setLoading(false);
             return { success: true, loan: mappedLoan };
         } catch (error) {
+            console.error('Error creating loan:', error);
             setLoading(false);
             return { success: false, error: error.message };
         }
@@ -216,7 +338,7 @@ export const LoanProvider = ({ children }) => {
         setLoading(true);
         try {
             // Map camelCase to snake_case for database
-            const updateProto = {};
+            const updateProto = { updated_at: serverTimestamp() };
             if (updatedData.amount !== undefined) updateProto.amount = updatedData.amount;
             if (updatedData.interestRate !== undefined) updateProto.interest_rate = updatedData.interestRate;
             if (updatedData.borrowerName !== undefined) updateProto.borrower_name = updatedData.borrowerName;
@@ -228,12 +350,8 @@ export const LoanProvider = ({ children }) => {
             if (updatedData.description !== undefined) updateProto.description = updatedData.description;
             if (updatedData.repaymentSchedule !== undefined) updateProto.repayment_schedule = updatedData.repaymentSchedule;
 
-            const { error } = await supabase
-                .from('loans')
-                .update(updateProto)
-                .eq('id', loanId);
-
-            if (error) throw error;
+            const loanRef = doc(db, 'loans', loanId);
+            await updateDoc(loanRef, updateProto);
 
             setLoans(prevLoans =>
                 prevLoans.map(loan =>
@@ -244,6 +362,7 @@ export const LoanProvider = ({ children }) => {
             setLoading(false);
             return { success: true };
         } catch (error) {
+            console.error('Error updating loan:', error);
             setLoading(false);
             return { success: false, error: error.message };
         }
@@ -253,18 +372,14 @@ export const LoanProvider = ({ children }) => {
     const deleteLoan = async (loanId) => {
         setLoading(true);
         try {
-            const { error } = await supabase
-                .from('loans')
-                .delete()
-                .eq('id', loanId);
-
-            if (error) throw error;
+            await deleteDoc(doc(db, 'loans', loanId));
 
             setLoans(prevLoans => prevLoans.filter(loan => loan.id !== loanId));
 
             setLoading(false);
             return { success: true };
         } catch (error) {
+            console.error('Error deleting loan:', error);
             setLoading(false);
             return { success: false, error: error.message };
         }
@@ -272,35 +387,59 @@ export const LoanProvider = ({ children }) => {
 
     // LOGIN
     const login = async (email, password) => {
-        const { data, error } = await supabase.auth.signInWithPassword({
-            email,
-            password,
-        });
-        if (error) throw error;
-        return data;
+        try {
+            const userCredential = await signInWithEmailAndPassword(auth, email, password);
+            return { user: userCredential.user, error: null };
+        } catch (error) {
+            console.error('Error logging in:', error);
+            throw error;
+        }
     };
 
     // SIGNUP
-    const signup = async (email, password, name) => {
-        const { data, error } = await supabase.auth.signUp({
-            email,
-            password,
-            options: {
-                data: {
-                    name,
-                },
-            },
-        });
-        if (error) throw error;
-        return data;
+    const signup = async (email, password, name, phone, aadhaar) => {
+        try {
+            const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+            const photoURL = ''; // Always empty string since storage is removed
+
+            // Update profile with name
+            if (name) {
+                await updateProfile(userCredential.user, {
+                    displayName: name,
+                    photoURL: null
+                });
+            }
+
+            // Wait for user database entry creation
+            await setDoc(doc(db, 'users', userCredential.user.uid), {
+                name,
+                email,
+                phone: phone || '',
+                aadhaar: aadhaar || '',
+                photoURL: photoURL,
+                is_new_user: true,
+                created_at: serverTimestamp()
+            });
+
+            return { user: userCredential.user, error: null };
+        } catch (error) {
+            console.error('Error signing up:', error);
+            throw error;
+        }
     };
 
     // LOGOUT
     const logout = async () => {
-        const { error } = await supabase.auth.signOut();
-        if (error) throw error;
-        setIsAuthenticated(false);
-        setUser(null);
+        try {
+            await signOut(auth);
+            setIsAuthenticated(false);
+            setUser(null);
+            setLoans([]);
+            setActivities([]);
+        } catch (error) {
+            console.error('Error signing out:', error);
+            throw error;
+        }
     };
 
     // Calculate statistics
@@ -326,31 +465,24 @@ export const LoanProvider = ({ children }) => {
         setLoading(true);
         try {
             // 1. Create payment record
-            const { data: payment, error: paymentError } = await supabase
-                .from('payments')
-                .insert([{
-                    loan_id: loanId,
-                    user_id: user.id,
-                    amount: paymentData.amount,
-                    date: paymentData.date,
-                    status: 'completed'
-                }])
-                .select()
-                .single();
+            const paymentObj = {
+                loan_id: loanId,
+                user_id: user.id,
+                amount: parseFloat(paymentData.amount),
+                date: paymentData.date,
+                status: 'completed',
+                created_at: serverTimestamp()
+            };
 
-            if (paymentError) throw paymentError;
+            const paymentRef = await addDoc(collection(db, 'payments'), paymentObj);
+            paymentObj.id = paymentRef.id;
 
             // 2. Update loan amount_paid
             const loan = loans.find(l => l.id === loanId);
             const updatedAmountPaid = (loan.amountPaid || 0) + parseFloat(paymentData.amount);
 
-            // Using direct update instead of updateLoan to avoid circular dependency/recursion if it calls other things
-            const { error: loanError } = await supabase
-                .from('loans')
-                .update({ amount_paid: updatedAmountPaid })
-                .eq('id', loanId);
-
-            if (loanError) throw loanError;
+            const loanRef = doc(db, 'loans', loanId);
+            await updateDoc(loanRef, { amount_paid: updatedAmountPaid, updated_at: serverTimestamp() });
 
             // Update local state
             setLoans(prevLoans =>
@@ -358,7 +490,7 @@ export const LoanProvider = ({ children }) => {
                     if (loan.id === loanId) {
                         return {
                             ...loan,
-                            payments: [payment, ...(loan.payments || [])], // Prepend new payment
+                            payments: [paymentObj, ...(loan.payments || [])], // Prepend new payment
                             amountPaid: updatedAmountPaid
                         };
                     }
@@ -383,8 +515,9 @@ export const LoanProvider = ({ children }) => {
             await updateLoanStatus(loanId);
 
             setLoading(false);
-            return { success: true, payment };
+            return { success: true, payment: paymentObj };
         } catch (error) {
+            console.error('Error adding repayment:', error);
             setLoading(false);
             return { success: false, error: error.message };
         }
@@ -459,6 +592,11 @@ export const LoanProvider = ({ children }) => {
                     loanId,
                     { previousStatus: loan.status, newStatus, dueDate: loan.dueDate }
                 );
+
+                // Penalty for missing deadline
+                if (loan.status !== 'overdue') {
+                    calculateTrustScore(-25);
+                }
             }
 
             // If loan just completed, update gamification
@@ -540,33 +678,42 @@ export const LoanProvider = ({ children }) => {
         return newBadges;
     };
 
-    // Calculate trust score
-    const calculateTrustScore = () => {
-        const stats = gamification.stats;
+    // Calculate trust score (Simplified based on +10/-25 rules)
+    const calculateTrustScore = (amountChange = 0) => {
+        setGamification(prev => {
+            const newScore = Math.max(0, prev.trustScore + amountChange);
 
-        // On-time payment rate (40%)
-        const onTimeRate = stats.totalPayments > 0
-            ? (stats.onTimePayments / stats.totalPayments) * 40
-            : 20;
+            if (prev.trustScore !== newScore) {
+                const isIncrease = newScore > prev.trustScore;
+                const difference = Math.abs(newScore - prev.trustScore);
 
-        // Completion rate (30%)
-        const completionRate = stats.totalLoans > 0
-            ? (stats.completedLoans / stats.totalLoans) * 30
-            : 15;
+                // Show toast notification
+                if (isIncrease) {
+                    toast.success(`Trust Score increased by ${difference} points!`, {
+                        icon: '📈',
+                        style: {
+                            borderRadius: '10px',
+                            background: '#333',
+                            color: '#fff',
+                        },
+                    });
+                } else {
+                    toast.error(`Trust Score decreased by ${difference} points.`, {
+                        icon: '📉',
+                        style: {
+                            borderRadius: '10px',
+                            background: '#333',
+                            color: '#fff',
+                        },
+                    });
+                }
+            }
 
-        // Active loan management (10%)
-        const activeLoans = loans.filter(l => l.status === 'active').length;
-        const loanManagement = Math.min(activeLoans * 2, 10);
-
-        // Recency score (20%)
-        const recencyScore = 20; // Default for now
-
-        const score = Math.round(onTimeRate + completionRate + loanManagement + recencyScore);
-
-        setGamification(prev => ({
-            ...prev,
-            trustScore: Math.min(100, Math.max(0, score))
-        }));
+            return {
+                ...prev,
+                trustScore: newScore
+            };
+        });
     };
 
     // Update stats when loan is created
@@ -588,10 +735,9 @@ export const LoanProvider = ({ children }) => {
             awardPoints(50, 'Loan created');
         }
 
-        // Check badges and trust score
+        // Check badges
         setTimeout(() => {
             checkAndUnlockBadges();
-            calculateTrustScore();
         }, 500);
     };
 
@@ -610,18 +756,20 @@ export const LoanProvider = ({ children }) => {
             streak: isOnTime ? prev.streak + 1 : 0
         }));
 
-        // Award points
+        // Award points and trust score
         if (isOnTime) {
             awardPoints(75, 'On-time payment');
+            setTimeout(() => {
+                checkAndUnlockBadges();
+                // Trust score +10 for timely payment that helps complete or pays iteration
+                calculateTrustScore(10);
+            }, 500);
         } else {
             awardPoints(50, 'Payment made');
+            setTimeout(() => {
+                checkAndUnlockBadges();
+            }, 500);
         }
-
-        // Check badges and trust score
-        setTimeout(() => {
-            checkAndUnlockBadges();
-            calculateTrustScore();
-        }, 500);
     };
 
     // Update stats when loan is completed
@@ -637,10 +785,9 @@ export const LoanProvider = ({ children }) => {
         // Award points
         awardPoints(200, 'Loan completed');
 
-        // Check badges and trust score
+        // Check badges
         setTimeout(() => {
             checkAndUnlockBadges();
-            calculateTrustScore();
         }, 500);
     };
 
@@ -661,19 +808,16 @@ export const LoanProvider = ({ children }) => {
                 loan_id: loanId,
                 type: activityType,
                 description,
-                metadata
+                metadata,
+                created_at: serverTimestamp()
             };
 
-            const { data, error } = await supabase
-                .from('activities')
-                .insert([newActivityProto])
-                .select()
-                .single();
+            const docRef = await addDoc(collection(db, 'activities'), newActivityProto);
+            newActivityProto.id = docRef.id;
+            newActivityProto.created_at = new Date();
 
-            if (!error && data) {
-                setActivities(prev => [data, ...prev].slice(0, 100));
-                return data;
-            }
+            setActivities(prev => [newActivityProto, ...prev].slice(0, 100));
+            return newActivityProto;
         } catch (err) {
             console.error("Failed to log activity", err);
         }

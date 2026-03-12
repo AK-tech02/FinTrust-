@@ -85,22 +85,7 @@ const GamificationDashboard = () => {
                     </div>
                 </div>
 
-                {/* Streak Card */}
-                <div className="gam-card streak-card">
-                    <div className="card-header">
-                        <div className="card-icon" style={{ background: 'linear-gradient(135deg, #F59E0B, #D97706)' }}>
-                            🔥
-                        </div>
-                        <div>
-                            <h3>Payment Streak</h3>
-                            <p className="card-subtitle">Consecutive on-time payments</p>
-                        </div>
-                    </div>
-                    <div className="streak-display">
-                        <div className="streak-number">{gamification.streak}</div>
-                        <div className="streak-label">day{gamification.streak !== 1 ? 's' : ''}</div>
-                    </div>
-                </div>
+
 
                 {/* Stats Card */}
                 <div className="gam-card stats-card">

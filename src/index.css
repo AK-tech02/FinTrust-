@@ -71,33 +71,36 @@
   --transition-slow: 0.6s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* Dark Theme - Pitch Black with Neon */
+/* Premium Fintech Dark Theme */
 [data-theme="night"] {
-  --color-background: #000000;
-  --color-surface: #0A0A0A;
-  --color-surface-hover: #1A1A1A;
+  --color-background: #0f172a;
+  --color-surface: #1e293b;
+  --color-surface-hover: #334155;
 
-  --color-text-dark: #FFFFFF;
-  --color-text-medium: #E0E0E0;
-  --color-text-light: #B0B0B0;
+  --color-text-dark: #e2e8f0;
+  --color-text-medium: #cbd5e1;
+  --color-text-light: #94a3b8;
 
-  --color-gray-50: #0A0A0A;
-  --color-gray-100: #1A1A1A;
-  --color-gray-200: #2A2A2A;
-  --color-gray-300: #3A3A3A;
+  --color-gray-50: #0f172a;
+  --color-gray-100: #1e293b;
+  --color-gray-200: #334155;
+  --color-gray-300: #475569;
 
-  --color-border: #2A2A2A;
+  --color-border: #334155;
 
-  /* Enhanced shadows for dark mode with neon glow */
-  --shadow-sm: 0 1px 3px rgba(0, 217, 255, 0.1);
-  --shadow-md: 0 4px 6px rgba(0, 217, 255, 0.15);
-  --shadow-lg: 0 10px 25px rgba(0, 217, 255, 0.2);
-  --shadow-xl: 0 20px 40px rgba(0, 217, 255, 0.25);
+  --color-primary: #6366f1;
+  --color-primary-dark: #4f46e5;
 
-  /* Dark glassmorphism */
-  --glass-bg: rgba(10, 10, 10, 0.6);
-  --glass-border: rgba(0, 217, 255, 0.2);
-  --glass-blur: blur(15px);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.2);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.4);
+  --shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.5);
+
+  --glass-bg: rgba(30, 41, 59, 0.8);
+  --glass-border: rgba(99, 102, 241, 0.2);
+  --glass-blur: blur(12px);
+
+  --transition-normal: all 0.2s ease;
 }
 
 html {
@@ -168,7 +171,15 @@ textarea {
   outline: none;
 }
 
-/* Utility Classes */
+/* Global Dark Mode Input Overrides */
+[data-theme="night"] input,
+[data-theme="night"] select,
+[data-theme="night"] textarea {
+  background-color: var(--color-background);
+  border-color: var(--color-border);
+  color: var(--color-text-dark);
+}
+
 .container {
   width: 100%;
   max-width: 1200px;

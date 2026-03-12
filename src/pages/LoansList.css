@@ -10,11 +10,12 @@
 }
 
 .filters-bar {
-    background: white;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
     border-radius: var(--radius-lg);
     padding: 1.5rem;
     margin-bottom: 2rem;
-    box-shadow: var(--shadow-sm);
+    box-shadow: var(--shadow-md);
     animation: fadeInDown 0.5s ease-out;
 }
 
@@ -34,7 +35,9 @@
 .search-box input {
     width: 100%;
     padding: 0.875rem 1rem 0.875rem 3rem;
-    border: 2px solid var(--color-gray-200);
+    border: 1px solid var(--color-border);
+    background: var(--color-background);
+    color: var(--color-text-dark);
     border-radius: var(--radius-md);
     font-size: 0.95rem;
     transition: all var(--transition-normal);
@@ -85,13 +88,13 @@
 }
 
 .loan-card {
-    background: white;
+    background: var(--color-surface);
     border-radius: var(--radius-lg);
     padding: 1.5rem;
-    box-shadow: var(--shadow-sm);
+    box-shadow: var(--shadow-md);
     text-decoration: none;
     transition: all var(--transition-normal);
-    border: 2px solid transparent;
+    border: 1px solid var(--color-border);
     animation: fadeInUp 0.6s ease-out backwards;
     position: relative;
     overflow: hidden;
@@ -254,7 +257,8 @@
 .empty-state {
     text-align: center;
     padding: 4rem 2rem;
-    background: white;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
     border-radius: var(--radius-lg);
 }
 

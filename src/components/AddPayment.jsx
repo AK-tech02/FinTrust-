@@ -6,14 +6,14 @@ const AddPayment = ({ loanId, outstandingAmount, onPaymentAdded, onCancel }) => 
     const [formData, setFormData] = useState({
         amount: '',
         date: new Date().toISOString().split('T')[0], // Today's date
-        method: 'Cash',
+        method: 'Bank Transfer',
         note: ''
     });
 
     const [errors, setErrors] = useState({});
     const [isSubmitting, setIsSubmitting] = useState(false);
 
-    const paymentMethods = ['Cash', 'Bank Transfer', 'UPI', 'Check', 'Other'];
+    const paymentMethods = ['Bank Transfer', 'UPI', 'Check', 'Other'];
 
     const handleChange = (e) => {
         const { name, value } = e.target;
@@ -49,7 +49,7 @@ const AddPayment = ({ loanId, outstandingAmount, onPaymentAdded, onCancel }) => 
             setFormData({
                 amount: '',
                 date: new Date().toISOString().split('T')[0],
-                method: 'Cash',
+                method: 'Bank Transfer',
                 note: ''
             });
             setErrors({});
